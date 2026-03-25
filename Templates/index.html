@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Anveshak</title>
+<style>
+    :root{--p:#6366f1;--t:#f59e0b;--k:#8b5cf6;}
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;justify-content:center;align-items:center;padding:15px;}
+    .app{max-width:1800px;width:100%;background:#fff;border-radius:16px;box-shadow:0 25px 60px rgba(0,0,0,.4);overflow:hidden;display:grid;grid-template-rows:auto auto 1fr;height:96vh;}
+    .header{background:var(--p);color:#fff;padding:20px;text-align:center;position:relative;font-size:24px;font-weight:700;}
+    .load-time{position:absolute;top:50%;right:20px;transform:translateY(-50%);font-size:13px;background:rgba(0,0,0,.4);padding:6px 12px;border-radius:12px;}
+    .bar{padding:16px;background:#f8f9fa;display:flex;gap:12px;align-items:center;}
+    input[type=file],.search{padding:14px;border:2px solid #ddd;border-radius:10px;font-size:15px;}
+    .search{flex:1;}
+    .main{display:grid;grid-template-columns:300px 1fr 400px;overflow:hidden;height:calc(100vh - 150px);}
+    .left-sidebar,.right-sidebar{background:#f8f9fa;padding:20px;overflow-y:auto;}
+    .left-sidebar{border-right:1px solid #eee;}
+    .right-sidebar{border-left:1px solid #eee;}
+    .pdf-view{background:#fafafa;overflow:auto;padding:30px;position:relative;}
+    .upload-spinner{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:70px;height:70px;border:8px solid #eee;border-top-color:var(--p);border-radius:50%;animation:s 1s linear infinite;display:none;z-index:100;}
+    @keyframes s{to{transform:translate(-50%,-50%) rotate(360deg);}}
+    .page{margin:auto auto 50px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.2);border-radius:12px;position:relative;overflow:hidden;}
+    .page img{max-width:100%;display:block;}
+    .page-label{position:absolute;top:10px;right:12px;background:rgba(0,0,0,.8);color:#fff;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:600;}
+    .highlight{position:absolute;background:rgba(255,255,0,0.5);border:2px solid #f59f0b;border-radius:4px;pointer-events:none;z-index:10;box-shadow:0 0 12px rgba(255,215,0,0.8);}
+    .stats{margin-bottom:20px;display:flex;flex-wrap:wrap;gap:10px;justify-content:center;padding:14px;background:#f0f2ff;border-radius:14px;border:1px solid #e0e4ff;}
+    .stat{background:#fff;padding:10px 14px;border-radius:12px;text-align:center;min-width:80px;box-shadow:0 3px 10px rgba(99,102,241,0.15);border:1px solid #e0e4ff;}
+    .stat-val{font-size:20px;font-weight:800;color:var(--p);line-height:1;}
+    .stat-lab{font-size:10px;color:#666;margin-top:4px;text-transform:uppercase;letter-spacing:0.8px;font-weight:600;}
+    #kraken .stat-val{color:var(--k);}
+    #tess .stat-val{color:var(--t);}
+    #native .stat-val{color:var(--p);}
+    .match{background:#fff;padding:14px;margin-bottom:10px;border-radius:10px;cursor:pointer;transition:.2s;box-shadow:0 2px 8px rgba(0,0,0,.1);}
+    .match:hover{transform:translateX(6px);box-shadow:0 6px 16px rgba(0,0,0,.15);}
+    .match.native{border-left:5px solid var(--p);}
+    .match.tesseract{border-left:5px solid var(--t);}
+    .match.kraken{border-left:5px solid var(--k);}
+    .match-header{font-size:14px;margin-bottom:6px;display:flex;justify-content:space-between;color:#555;}
+    .match-page{font-weight:700;color:var(--p);}
+    .match-txt{font-size:14px;line-height:1.6;}
+    .hl{background:#ffd43b;padding:0 3px;border-radius:3px;font-weight:700;}
+    .library-item{background:#fff;padding:14px;margin-bottom:10px;border-radius:10px;cursor:pointer;transition:.2s;border-left:4px solid var(--p);box-shadow:0 2px 8px rgba(0,0,0,.1);}
+    .library-item:hover{transform:translateX(6px);box-shadow:0 6px 16px rgba(0,0,0,.15);}
+    .library-item-name{font-weight:600;color:#333;margin-bottom:5px;}
+    .library-item-meta{font-size:12px;color:#666;}
+    .library-empty{color:#999;text-align:center;padding:50px;font-size:15px;}
+    .loader{display:none;text-align:center;padding:25px;}
+    .loader::after{content:'';display:inline-block;width:28px;height:28px;border:4px solid #eee;border-top-color:var(--p);border-radius:50%;animation:s 1s linear infinite;}
+    #loadMore{text-align:center;padding:20px;display:none;}
+    #loadMore button{background:#6366f1;color:#fff;padding:12px 30px;border:none;border-radius:50px;cursor:pointer;font-weight:600;}
+</style>
+</head>
+<body>
+<div class="app">
+    <div class="header">
+        <h1>Anveshak</h1>
+        <div class="load-time" id="loadTime">—</div>
+    </div>
+    <div class="bar">
+        <input type="file" id="pdfInput" accept=".pdf">
+        <input type="text" id="searchBar" class="search" placeholder="Search in PDF…">
+    </div>
+    <div class="main">
+        <div class="left-sidebar">
+            <div class="stats">
+                <div class="stat"><div class="stat-val" id="totalPages">0</div><div class="stat-lab">Pages</div></div>
+                <div class="stat"><div class="stat-val" id="totalMatches">0</div><div class="stat-lab">Matches</div></div>
+                <div class="stat" id="native"><div class="stat-val">0</div><div class="stat-lab">Native</div></div>
+                <div class="stat" id="tess"><div class="stat-val">0</div><div class="stat-lab">Tesseract</div></div>
+                <div class="stat" id="kraken"><div class="stat-val">0</div><div class="stat-lab">Kraken</div></div>
+            </div>
+            <h3 style="margin:0 0 14px;text-align:center;color:#333;font-size:17px;">File Library</h3>
+            <button id="refreshLibrary" style="width:100%;padding:12px;background:var(--p);color:#fff;border:none;border-radius:10px;cursor:pointer;font-size:14px;margin-bottom:14px;">
+                Refresh Library
+            </button>
+            <div id="libraryList"></div>
+        </div>
+        <div class="pdf-view" id="pdfContainer">
+            <div class="upload-spinner" id="uploadSpinner"></div>
+            <div style="padding:140px;text-align:center;color:#bbb;">
+                <h3 style="font-size:28px;margin-bottom:10px;">Upload PDF</h3>
+                <p style="font-size:16px;">Parallel OCR • Instant Highlight • Zero Install</p>
+            </div>
+        </div>
+        <div class="right-sidebar">
+            <div class="loader" id="loader">Searching…</div>
+            <div id="results" style="max-height:calc(100vh - 300px);overflow-y:auto;" onscroll="handleScroll()">
+                <div id="resultsContainer"></div>
+                <div id="loadMore">
+                    <button onclick="loadMoreResults()">See More Results</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+// GLOBAL VARIABLES
+let session = null, matches = [], rendered = [], to = null;
+let loadedImages = 0, totalImages = 0;
+let currentPage = 0;
+const PAGE_SIZE = 100;  // Sidebar batch size
+let allMatches = [];
+
+function $(s) { return document.querySelector(s); }
+
+function imageLoaded() {
+    loadedImages++;
+    draw();
+}
+
+function resetImageCounter(count) {
+    totalImages = count;
+    loadedImages = 0;
+}
+
+$('#pdfInput').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    matches = []; rendered = []; clearAll();
+    const fd = new FormData(); fd.append('file', f);
+    $('#uploadSpinner').style.display = 'block'; $('#pdfContainer').style.opacity = '0.6';
+    const r = await fetch('/upload', {method: 'POST', body: fd});
+    const d = await r.json();
+    $('#uploadSpinner').style.display = 'none'; $('#pdfContainer').style.opacity = '1';
+    if (d.error) { alert(d.error); return; }
+    session = d.session; rendered = d.rendered_pages || [];
+    $('#totalPages').textContent = d.total_pages; $('#loadTime').textContent = `${d.load_time}s`;
+    const c = $('#pdfContainer'); c.innerHTML = '';
+    const spinner = document.createElement('div'); spinner.className = 'upload-spinner'; spinner.id = 'uploadSpinner'; c.appendChild(spinner);
+    rendered.sort((a,b) => parseInt(a.split('_')[1]) - parseInt(b.split('_')[1])).forEach(png => {
+        const pageNum = parseInt(png.split('_')[1]);
+        const div = document.createElement('div'); div.className = 'page'; div.dataset.page = pageNum; div.dataset.session = session;
+        div.innerHTML = `<div class="page-label">Page ${pageNum}</div><img src="/${session}/png/${png}" onload="imageLoaded()">`;
+        c.appendChild(div);
+    });
+    resetImageCounter(rendered.length);
+    draw();
+    setTimeout(draw, 500);
+    setTimeout(draw, 1500);
+    setTimeout(draw, 3000);
+    $('#searchBar').value = '';
+};
+
+let currentSearch = '';
+$('#searchBar').addEventListener('input', () => {
+    const term = $('#searchBar').value.trim();
+    if (!term) { clearAll(); currentSearch = ''; return; }
+    if (term === currentSearch) return;
+    clearTimeout(to);
+    if (term.length > currentSearch.length && currentSearch && term.startsWith(currentSearch)) {
+        to = setTimeout(() => { currentSearch = term; search(term); }, 120);
+    } else {
+        currentSearch = term;
+        search(term);
+    }
+});
+
+async function search(term) {
+    if (!session) return;
+    $('#loader').style.display = 'block';
+    const r = await fetch('/search', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({session, search_term: term})});
+    const d = await r.json();
+    $('#loader').style.display = 'none';
+    matches = d.matches || [];
+    $('#totalMatches').textContent = matches.length;
+    $('#native').textContent = d.stats?.native || 0;
+    $('#tess').textContent = d.stats?.tesseract || 0;
+    $('#kraken').textContent = d.stats?.kraken || 0;
+    showResults(matches);
+    draw();  // Start smooth highlight drawing
+}
+
+function clearAll() {
+    $('#loader').style.display = 'none';
+    matches = []; allMatches = []; currentPage = 0;
+    $('#resultsContainer').innerHTML = ''; $('#loadMore').style.display = 'none';
+    $('#totalMatches').textContent = '0';
+    $('#native').textContent = '0'; $('#tess').textContent = '0'; $('#kraken').textContent = '0';
+    document.querySelectorAll('.highlight').forEach(el => el.remove());
+}
+
+function hl(t, s, e) {
+    if (s < 0 || e <= s || e > t.length) return t;
+    return t.slice(0, s) + `<span class="hl">${t.slice(s, e)}</span>` + t.slice(e);
+}
+
+function showResults(list) {
+    allMatches = list.sort((a, b) => a.page - b.page || a.line - b.line);
+    currentPage = 0;
+    $('#resultsContainer').innerHTML = '';
+    $('#totalMatches').textContent = allMatches.length;
+
+    if (allMatches.length === 0) {
+        $('#resultsContainer').innerHTML = '<div style="color:#999;padding:20px;text-align:center;">No matches</div>';
+        $('#loadMore').style.display = 'none';
+        return;
+    }
+
+    loadNextPage();
+
+    if (allMatches.length > PAGE_SIZE) {
+        $('#loadMore').style.display = 'block';
+    } else {
+        $('#loadMore').style.display = 'none';
+    }
+}
+
+function loadNextPage() {
+    const start = currentPage * PAGE_SIZE;
+    const end = Math.min(start + PAGE_SIZE, allMatches.length);
+    const pageMatches = allMatches.slice(start, end);
+    const container = $('#resultsContainer');
+
+    pageMatches.forEach(m => {
+        const div = document.createElement('div');
+        div.className = `match ${m.source}`;
+        div.onclick = () => jump(m.page);
+        div.innerHTML = `
+            <div class="match-header">
+                <span class="match-page">Page ${m.page}</span>
+                <span class="match-line">Line ${m.line}</span>
+            </div>
+            <div class="match-txt">${hl(m.excerpt, m.highlight_start, m.highlight_end)}</div>
+            <small style="color:${m.source==='kraken'?'#8b5cf6':m.source==='tesseract'?'#f59e0b':'#6366f1'}">
+                ${m.source.toUpperCase()} • ${m.confidence}%
+            </small>
+        `;
+        container.appendChild(div);
+    });
+
+    currentPage++;
+    if (end >= allMatches.length) {
+        $('#loadMore').style.display = 'none';
+    }
+}
+
+function loadMoreResults() {
+    loadNextPage();
+}
+
+function handleScroll() {
+    const results = $('#results');
+    if (results.scrollTop + results.clientHeight >= results.scrollHeight - 100) {
+        if ($('#loadMore').style.display === 'block') {
+            loadNextPage();
+        }
+    }
+}
+
+function draw() {
+    document.querySelectorAll('.highlight').forEach(el => el.remove());
+
+    const pad = 1;
+
+    const allHighlights = [];
+    matches.forEach(m => {
+        const bboxes = m.bboxes || [];
+        bboxes.forEach(bbox => {
+            allHighlights.push({ match: m, bbox: bbox });
+        });
+    });
+
+    let currentIndex = 0;
+    const batchSize = 100;
+
+    function drawNextBatch() {
+        const batchEnd = Math.min(currentIndex + batchSize, allHighlights.length);
+        const startTime = performance.now();
+
+        while (currentIndex < batchEnd && (performance.now() - startTime) < 14) {
+            const { match, bbox } = allHighlights[currentIndex];
+            const pageDiv = document.querySelector(`.page[data-page="${match.page}"]`);
+            if (!pageDiv || pageDiv.dataset.session !== session) {
+                currentIndex++;
+                continue;
+            }
+
+            const img = pageDiv.querySelector('img');
+            if (!img || !bbox || bbox.length !== 4) {
+                currentIndex++;
+                continue;
+            }
+
+            const scaleX = img.offsetWidth / (img.naturalWidth || img.offsetWidth || 1000);
+            const scaleY = img.offsetHeight / (img.naturalHeight || img.offsetHeight || 1400);
+            if (scaleX <= 0 || scaleY <= 0) {
+                currentIndex++;
+                continue;
+            }
+
+            const [x0, y0, x1, y1] = bbox;
+            const box = document.createElement('div');
+            box.className = 'highlight';
+            box.style.left = ((x0 * scaleX) - pad) + 'px';
+            box.style.top = ((y0 * scaleY) - pad) + 'px';
+            box.style.width = ((x1 - x0) * scaleX + 2 * pad) + 'px';
+            box.style.height = ((y1 - y0) * scaleY + 2 * pad) + 'px';
+
+            pageDiv.appendChild(box);
+            currentIndex++;
+        }
+
+        if (currentIndex < allHighlights.length) {
+            requestAnimationFrame(drawNextBatch);
+        }
+    }
+
+    if (allHighlights.length > 0) {
+        requestAnimationFrame(drawNextBatch);
+    }
+}
+
+function jump(p) {
+    const container = document.getElementById('pdfContainer');
+    const els = container.querySelectorAll(`.page[data-page="${p}"]`);
+    if (els.length === 0) return;
+    const el = els[0];
+    const topPos = el.offsetTop - container.clientHeight / 2 + el.clientHeight / 2;
+    container.scrollTo({ top: topPos, behavior: 'smooth' });
+}
+
+window.addEventListener('beforeunload', () => {
+    if (session) navigator.sendBeacon('/cleanup', JSON.stringify({ session }));
+});
+
+async function loadLibrary() {
+    const r = await fetch('/library');
+    const d = await r.json();
+    const list = $('#libraryList');
+    if (!d.library || d.library.length === 0) {
+        list.innerHTML = '<div class="library-empty">No files yet.<br>Upload a PDF to get started.</div>';
+        return;
+    }
+    list.innerHTML = d.library.map(item => {
+        const sizeMB = (item.size / (1024 * 1024)).toFixed(2);
+        const date = new Date(item.modified * 1000).toLocaleString();
+        return `
+            <div class="library-item" onclick="loadFromLibrary('${item.session}', '${item.filename}')">
+                <div class="library-item-name">${item.filename}</div>
+                <div class="library-item-meta">${item.pages} pages • ${sizeMB} MB</div>
+                <div class="library-item-meta">${date}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadFromLibrary(sess, filename) {
+    matches = []; rendered = []; clearAll();
+    $('#uploadSpinner').style.display = 'block'; $('#pdfContainer').style.opacity = '0.6';
+    const r = await fetch(`/load/${sess}`);
+    const d = await r.json();
+    $('#uploadSpinner').style.display = 'none'; $('#pdfContainer').style.opacity = '1';
+    if (d.error) { alert(d.error); return; }
+    session = d.session; rendered = d.rendered_pages || [];
+    $('#totalPages').textContent = d.total_pages; $('#loadTime').textContent = 'From Library';
+    const c = $('#pdfContainer'); c.innerHTML = '';
+    const spinner = document.createElement('div'); spinner.className = 'upload-spinner'; spinner.id = 'uploadSpinner'; c.appendChild(spinner);
+    rendered.sort((a,b)=>parseInt(a.split('_')[1])-parseInt(b.split('_')[1])).forEach(png=>{
+        const pageNum = parseInt(png.split('_')[1]);
+        const div = document.createElement('div'); div.className = 'page'; div.dataset.page = pageNum; div.dataset.session = session;
+        div.innerHTML = `<div class="page-label">Page ${pageNum}</div><img src="/${session}/png/${png}" onload="imageLoaded()">`;
+        c.appendChild(div);
+    });
+    resetImageCounter(rendered.length);
+    draw();
+    setTimeout(draw, 500);
+    setTimeout(draw, 1500);
+    setTimeout(draw, 3000);
+    $('#searchBar').value = '';
+}
+
+$('#refreshLibrary').addEventListener('click', loadLibrary);
+window.addEventListener('load', () => {
+    loadLibrary();
+    setTimeout(draw, 500);
+    setTimeout(draw, 1500);
+});
+
+window.addEventListener('scroll', () => setTimeout(draw, 200));
+window.addEventListener('resize', () => setTimeout(draw, 100));
+</script>
+</body>
+</html>
