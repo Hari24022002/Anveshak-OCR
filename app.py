@@ -86,24 +86,26 @@ def render_page(pdf_path, pno, png_dir):
     return name
 
 def extract_native(pdf_path, pno):
+    """Extract native PDF words individually so search can match word sequences."""
     doc = fitz.open(pdf_path)
     page = doc[pno]
     words = []
+    scale = DISPLAY_DPI / 72.0
     try:
-        blocks = page.get_text("dict")["blocks"]
-        line_no = 0
-        scale = DISPLAY_DPI / 72.0
-        for b in blocks:
-            if "lines" not in b: continue
-            for line in b["lines"]:
-                line_no += 1
-                for span in line["spans"]:
-                    txt = span["text"].strip()
-                    if not txt: continue
-                    bbox = [c * scale for c in span["bbox"]]
-                    words.append({"w": txt, "b": bbox, "l": line_no, "s": "native", "c": 100})
-    except: pass
-    doc.close()
+        for item in page.get_text("words"):
+            x0, y0, x1, y1, text, block_no, line_no, word_no = item
+            text = text.strip()
+            if not text:
+                continue
+            words.append({
+                "w": text,
+                "b": [x0 * scale, y0 * scale, x1 * scale, y1 * scale],
+                "l": line_no + 1,
+                "s": "native",
+                "c": 100,
+            })
+    finally:
+        doc.close()
     return pno, words
 
 def ocr_tesseract(pdf_path, pno):
