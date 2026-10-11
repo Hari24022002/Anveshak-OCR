@@ -50,9 +50,9 @@ README.md
 
 ### Known setup issue
 
-The application configures Flask with `template_folder='templates'`, while the tracked HTML directory is named `Templates`. This case mismatch can break template loading on case-sensitive filesystems. Resolve it consistently before creating a public deployment.
+The Flask template configuration now matches the tracked `Templates/` directory, including on case-sensitive filesystems. `requirements.txt` lists the Python packages used by the application.
 
-The current code also points to `tesseract/tesseract.exe` and `tesseract/tessdata` relative to the application bundle. A clean installation guide and dependency manifest still need to be added and tested.
+For OCR, the application prefers the bundled `tesseract/tesseract.exe` when available and otherwise looks for a system-installed `tesseract` executable. Install Tesseract separately if OCR for scanned pages is needed; native text extraction and PDF rendering use the Python dependencies. The dependency versions and clean-install steps still need to be verified on a fresh Windows machine.
 
 ## Screenshots and demo
 
