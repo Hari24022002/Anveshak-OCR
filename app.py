@@ -18,7 +18,8 @@ from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 import pymupdf as fitz
 
-app = Flask(__name__, static_folder=None, template_folder='templates')
+app = Flask(__name__, static_folder=None, template_folder='Templates')
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB upload limit
 
 # ==================== INSTANT SPLASH ====================
 if getattr(sys, 'frozen', False):
@@ -52,8 +53,18 @@ if getattr(sys, 'frozen', False):
 else:
     base_path = os.path.abspath(".")
 
-pytesseract.pytesseract.tesseract_cmd = os.path.join(base_path, "tesseract", "tesseract.exe")
-os.environ["TESSDATA_PREFIX"] = os.path.join(base_path, "tesseract", "tessdata")
+# Prefer the bundled Windows Tesseract distribution when present; otherwise use
+# a system-installed Tesseract (for example, installed via the OS package manager).
+bundled_tesseract = os.path.join(base_path, "tesseract", "tesseract.exe")
+system_tesseract = shutil.which("tesseract")
+if os.path.isfile(bundled_tesseract):
+    pytesseract.pytesseract.tesseract_cmd = bundled_tesseract
+    bundled_tessdata = os.path.join(base_path, "tesseract", "tessdata")
+    if os.path.isdir(bundled_tessdata):
+        os.environ["TESSDATA_PREFIX"] = bundled_tessdata
+elif system_tesseract:
+    pytesseract.pytesseract.tesseract_cmd = system_tesseract
+# If neither is found, the app can still start and report OCR errors per page.
 
 OCR_CONFIG = '--psm 6'
 DISPLAY_DPI = OCR_DPI = 150
@@ -75,24 +86,26 @@ def render_page(pdf_path, pno, png_dir):
     return name
 
 def extract_native(pdf_path, pno):
+    """Extract native PDF words individually so search can match word sequences."""
     doc = fitz.open(pdf_path)
     page = doc[pno]
     words = []
+    scale = DISPLAY_DPI / 72.0
     try:
-        blocks = page.get_text("dict")["blocks"]
-        line_no = 0
-        scale = DISPLAY_DPI / 72.0
-        for b in blocks:
-            if "lines" not in b: continue
-            for line in b["lines"]:
-                line_no += 1
-                for span in line["spans"]:
-                    txt = span["text"].strip()
-                    if not txt: continue
-                    bbox = [c * scale for c in span["bbox"]]
-                    words.append({"w": txt, "b": bbox, "l": line_no, "s": "native", "c": 100})
-    except: pass
-    doc.close()
+        for item in page.get_text("words"):
+            x0, y0, x1, y1, text, block_no, line_no, word_no = item
+            text = text.strip()
+            if not text:
+                continue
+            words.append({
+                "w": text,
+                "b": [x0 * scale, y0 * scale, x1 * scale, y1 * scale],
+                "l": line_no + 1,
+                "s": "native",
+                "c": 100,
+            })
+    finally:
+        doc.close()
     return pno, words
 
 def ocr_tesseract(pdf_path, pno):
@@ -259,6 +272,12 @@ def upload():
 
 @app.route("/<sess>/png/<filename>")
 def serve_png(sess, filename):
+    # Session IDs are content hashes created by this application. Reject path
+    # traversal or arbitrary directory names before resolving stored files.
+    if len(sess) != 32 or any(ch not in "0123456789abcdef" for ch in sess.lower()):
+        return jsonify({"error": "Invalid session"}), 400
+    if not filename.lower().endswith(".png") or filename != os.path.basename(filename):
+        return jsonify({"error": "Invalid image name"}), 400
     return send_from_directory(os.path.join(BASE, sess, "png"), filename)
 
 @app.route("/search", methods=["POST"])
@@ -396,8 +415,11 @@ def load_session(sess):
 
 @app.route("/cleanup", methods=["POST"])
 def cleanup():
-    sess = request.json.get("session")
+    data = request.get_json(silent=True) or {}
+    sess = data.get("session")
     if sess:
+        if not isinstance(sess, str) or len(sess) != 32 or any(ch not in "0123456789abcdef" for ch in sess.lower()):
+            return jsonify({"error": "Invalid session"}), 400
         path = os.path.join(BASE, sess)
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
